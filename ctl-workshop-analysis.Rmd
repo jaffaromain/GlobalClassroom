@@ -1,0 +1,281 @@
+---
+title: "CTL Presentation Analysis"
+output:
+  html_document:
+    df_print: paged
+date: "2024-04-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse);library(data.table);library(ggplot2);library(ggthemr);library(dplyr);library(kableExtra)
+
+ggthemr("flat")
+```
+
+```{r data cleaning, include = FALSE}
+
+# full data set
+arp <- read_csv("data - winter 2024/Arbitration Role Play/Arbitration Role Play - LIWC Analysis.csv") %>% mutate(Homework = "Arbitration Role Play")
+
+ea =  read_csv("data - winter 2024/Employer Approaches to Labor Relations/LIWC-22 Results - Employer Approaches to Labor R___ - LIWC Analysis.csv") %>% mutate(Homework = "Employer Approaches to Labor Relations")
+
+
+final = read_csv("data - winter 2024/final exams /LIWC-22 Results - final exams  - LIWC Analysis.csv") %>% mutate(Homework = "Final Exam")
+
+ib = read_csv("data - winter 2024/Identifying Barriers/LIWC-22 Results - Identifying Barriers - LIWC Analysis.csv") %>% mutate(Homework = "Identifying Barriers")
+ubi = read_csv("data - winter 2024/Universal Basic Income and University Tuition/LIWC-22 Results - Universal Basic Income and Uni___ - LIWC Analysis.csv") %>% mutate(Homework = "Universal Basic Income and University Tuition")
+
+wm = read_csv("data - winter 2024/Women's March/LIWC-22 Results - Women's March - LIWC Analysis.csv") %>% mutate(Homework = "Women's March")
+
+yu = read_csv("data - winter 2024/Youth Unions/LIWC-22 Results - Youth Unions - LIWC Analysis.csv") %>% mutate(Homework = "Youth & Unions")
+
+full = rbind(ib, yu, wm, ubi, ea, arp, final)
+
+full = separate(full, Filename, into = c('Name', 'code1' , "code2", 'HW'), sep = "_") %>% select(-c(code1, code2)) 
+rm(ib, yu, wm, ubi, ea, arp, final)
+
+
+full = full %>% rename("reflection" = Homework
+                       ) %>% select(-c(HW))
+write_csv(full, "data - winter 2024/LIWC_res_2024.csv")
+
+full = full %>% select(Student, Homework, Analytic,Cognition, Clout, Social, Lifestyle, work, Perception, space, Tone ) 
+```
+
+
+Scores by Reflection Type
+```{r, echo = FALSE}
+firstup <- function(x) {
+  substr(x, 1, 1) <- toupper(substr(x, 1, 1))
+  x
+}
+data_long = full %>% filter(!is.na(Analytic))%>% pivot_longer(!c(Student, Homework), names_to = "Variable", values_to = "score")
+
+data_long$Variable <- firstup(data_long$Variable)
+all_scores <- data_long %>% mutate(Dimension = case_when(Variable == "Analytic"~"Thinking",
+Variable == "Cognition" ~"Thinking",
+Variable == "Clout" ~ "Social Leadership",
+Variable == "Social"  ~ "Social Leadership",
+ Variable == "Lifestyle" ~  "Work and Lifestyle",
+  Variable == "Work" ~  "Work and Lifestyle",
+    Variable == "Perception"~"Experiential",
+    Variable == "Space"~"Experiential",
+    Variable =="Tone"~"Experiential"
+))
+
+all_scores$Variable <- factor(all_scores$Variable, levels = c("Analytic","Cognition", "Clout", "Social", "Lifestyle", "Work", "Perception", "Space", "Tone"))
+
+all_scores$Homework <- factor(all_scores$Homework, levels = c("Identifying Barriers", "Youth & Unions", "Women's March","Universal Basic Income and University Tuition", "Employer Approaches to Labor Relations","Arbitration Role Play" ,"Final Exam"  ))
+###################################################
+library(rstatix)
+all_scores %>% group_by(Homework, Dimension) %>% get_summary_stats(score, show =c("min", "mean", "median", "max", "sd")) %>% kable(caption = "Summary Statistics", digits = 2)
+```
+
+# ANOVA - Differences in Dimensional Scores by Assessment
+```{r, echo=FALSE}
+# analytic
+library(car)
+library(sjstats)
+
+
+  for (var in unique(all_scores$Dimension)) {
+    dt <- all_scores %>% filter(Dimension == var) 
+    print(nrow(dt))
+    print(var)
+    print(summary(aov(score ~ Homework, data = dt)))
+    print(    eta_squared(aov(score ~ Homework, data = dt))
+)
+
+  }
+```
+
+```{r,echo=FALSE}
+all_scores %>% ggplot(aes(x=Homework,y=score, color = Dimension)) + stat_summary(aes(group = Dimension), fun=mean, geom = "line") +  stat_summary(aes(group = Dimension), fun=mean, geom = "point") + 
+labs(x="Assessment",y="Mean Dimension Score") + theme(legend.position = "right", axis.text.x = element_text(angle = 30,hjust = 1))
+```
+
+- no significant difference in Thinking (cognitive and analytical) across Assessments 
+
+- significant difference in Experiential, Work & Lifestyle & Social Leadership across Assessments
+
+```{r, echo=FALSE}
+library(ggsignif)
+
+# bar plot
+all_scores %>% group_by(Variable) %>% mutate(mean = mean(score))  %>% 
+ggplot(aes(x = Variable,  y = mean))  + geom_bar(position = "dodge", stat="identity") + labs(title = "", caption = "Percentage of words in student responses that fall into LIWC category.", x = "Dimension",  y ="Mean score")  + theme(legend.position = c(0.8, 0.8)) + ylim(0,105) +
+  
+  geom_signif(y_position = c(100,100), xmin = c(0.5,2.5), 
+              xmax = c(2,4.3), annotation = c("Thinking","Social Leadership"),
+              tip_length = .05)  +
+  
+  geom_signif(y_position = c(60,60), xmin = c(4.6,6.5), 
+              xmax = c(6.4,9.5), annotation = c("Work & Lifestyle","Experiential"),
+              tip_length = .05)
+
+```
+
+
+# Are self-rated food neophobia and SDO related to these learning dimension?
+
+```{r, echo = F}
+library(psych)
+
+engagement_survey <- read_csv("data/engagement-survey.csv") %>% filter(!is.na(Email))
+engagement_survey$Student = paste0(tolower(engagement_survey$`Last Name`),tolower(engagement_survey$`First Name`))
+# Calculate composite scores
+# make responses numeric
+
+# For Food Neophobia (FN)
+# Define the mapping from text responses to numeric values
+response_mapping <- c(
+  "Strongly Disagree" = 1,
+  "Disagree" = 2,
+  "Neutral" = 3,
+  "Agree" = 4,
+  "Strongly Agree" = 5
+)
+fn_columns <- grep("^FN", names(engagement_survey), value = TRUE)
+engagement_survey[fn_columns] <- lapply(engagement_survey[fn_columns], function(x) response_mapping[as.character(x)])
+
+
+# For Social Dominance Orientation (SDO)
+response_mapping <- c(
+  "Strongly Disagree" = 1,
+  "Somewhat Disagree" = 2,
+  "Slightly Disagree" = 3,
+  "Neutral" = 4,
+  "Slightly Agree" = 5,
+  "Somewhat Agree" = 6,
+  "Strongly Agree" = 7
+)
+
+sdo_columns <- grep("^SDO", names(engagement_survey), value = TRUE)
+engagement_survey[sdo_columns] <- lapply(engagement_survey[sdo_columns], function(x) response_mapping[as.character(x)])
+# reverse coding
+# Specify the columns to be reverse coded
+reverse_columns <- c("FN - I am constantly sampling new and different foods.",
+                     "FN -  I like foods from different countries.",
+                     "FN - At dinner parties, I will try a new food." )
+
+# Apply reverse coding for a 5-point scale
+max_scale_value <- 5
+engagement_survey[reverse_columns] <- lapply(engagement_survey[reverse_columns], function(x) {
+  if(is.numeric(x)) {
+    max_scale_value + 1 - x
+  } else {
+    as.numeric(factor(x, levels = c("Strongly Disagree", "Disagree", "Neutral", "Agree", "Strongly Agree"), labels = 1:5))
+  }
+})
+
+reverse_sdo_columns <- c(
+    "SDO - No one group should dominate in society.",
+    "SDO - Groups at the bottom are as deserving as groups at the top.",
+    "SDO - We should do what we can to equalize conditions for different groups.",
+    "SDO - We should work to give all groups an equal chance to succeed."
+)
+
+# Apply reverse coding for a 7-point scale
+# Assuming your scale is 1 to 7, adjust if it's different
+max_scale_value <- 7
+engagement_survey[reverse_sdo_columns] <- lapply(engagement_survey[reverse_sdo_columns], function(x) {
+    if(is.numeric(x)) {
+        max_scale_value + 1 - x
+    } else {
+        as.numeric(factor(x, levels = c("Strongly Disagree", "Somewhat Disagree", "Slightly Disagree", "Neutral", "Slightly Agree", "Somewhat Agree", "Strongly Agree"), labels = 1:7))
+    }
+})
+
+
+# Food Neophobia (FN) composite score
+fn_columns <- grep("^FN", names(engagement_survey), value = TRUE)
+engagement_survey$`Food Neophobia`<- rowMeans(engagement_survey[fn_columns], na.rm = TRUE)
+
+# Social Dominance Orientation (SDO) composite score
+sdo_columns <- grep("^SDO", names(engagement_survey), value = TRUE)
+engagement_survey$`Social Dominance`<- rowMeans(engagement_survey[sdo_columns], na.rm = TRUE)
+
+# Reliability test - Cronbach's alpha
+# For Food Neophobia
+fn_alpha <- alpha(engagement_survey[fn_columns])
+print(paste("Food Neophobia Cronbach's alpha:", round(fn_alpha$total$raw_alpha,3)))
+
+# For Social Dominance Orientation
+sdo_alpha <- alpha(engagement_survey[sdo_columns], check.keys = T)
+print(paste("Social Dominance Orientation Cronbach's alpha:", round(sdo_alpha$total$raw_alpha,3)))
+
+```
+
+# Correlation Analysis
+```{r, echo=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(corrplot)
+# Pivot all_scores to have each Dimension as a separate column
+all_scores_wide <- all_scores %>%
+  group_by(Student, Dimension) %>%
+  summarise(score = mean(score, na.rm = TRUE)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = Dimension, values_from = score)
+merged_data <- right_join(engagement_survey, all_scores_wide, by="Student")
+
+```
+
+
+```{r,echo=FALSE}
+library(ggcorrplot)
+library(Hmisc)
+
+# Calculate correlation matrix and the p-value matrix
+cor_data <- merged_data %>%
+  select(`Social Dominance`, `Food Neophobia`, Thinking, `Social Leadership`, `Work and Lifestyle`, Experiential) %>% na.omit()
+
+cor_matrix <- cor(cor_data, use = "pairwise.complete.obs")
+
+# Calculate p-values matrix using Hmisc package for significance testing
+cor_test <- Hmisc::rcorr(as.matrix(cor_data))
+p_matrix <- cor_test$P
+
+# Mask the correlation matrix to show only significant correlations
+sig_level <- 0.05  # Set your significance level
+# Plot the significant correlations
+
+# Plot the correlation matrix with ggcorrplot, showing only significant correlations
+ggcorrplot(cor_matrix, hc.order = TRUE, type = "lower",
+           lab = TRUE, lab_size = 3, 
+           outline.color = "white")
+
+
+
+```
+
+# Comparative Analysis
+
+```{r,echo=FALSE}
+library(dplyr)
+
+# Assuming engagement_survey is your dataset containing SDO and FN scores
+engagement_survey2 <- engagement_survey %>%
+  mutate(
+    SDO_group = ifelse(`Social Dominance` >= median(`Social Dominance`, na.rm = TRUE), 'High', 'Low'),
+    FN_group = ifelse(`Food Neophobia` >= median(`Food Neophobia`, na.rm = TRUE), 'High', 'Low')
+  )
+
+merged = merge(engagement_survey2,all_scores_wide , by = "Student")
+
+
+wilcox.test(Thinking ~ SDO_group, data = merged)
+wilcox.test(Experiential ~ SDO_group, data = merged)
+wilcox.test(`Social Leadership` ~ SDO_group, data = merged)
+wilcox.test(`Work and Lifestyle` ~ SDO_group, data = merged)
+
+wilcox.test(Thinking ~ FN_group, data = merged)
+wilcox.test(Experiential ~ FN_group, data = merged)
+wilcox.test(`Social Leadership` ~ FN_group, data = merged)
+wilcox.test(`Work and Lifestyle` ~ FN_group, data = merged)
+
+```
+
+
