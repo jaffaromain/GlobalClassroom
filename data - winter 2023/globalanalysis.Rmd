@@ -1,0 +1,407 @@
+---
+title: "Prelim Analysis"
+author: "Jaffa Romain"
+date: '2022-04-16'
+output:
+  word_document: default
+  pdf_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(readxl)
+```
+
+```{r}
+#LIWCDATA
+HW_Identifying_Barriers <- read.csv("IDingBarriers.csv")
+HW_Youth_and_Unions <- read.csv("youthUnions.csv")
+HW_Womens_March <- read.csv("womensMarch.csv")
+HW_Free_tuition_and_UBI <- read.csv("tuitionUBI.csv")
+
+final_free_tuition_and_UBI <- read_excel("final, free tuition and UBI.xlsx")
+final_youth_and_unions <- read_excel("final, youth and unions.xlsx")
+# bar plotting
+
+HW_Identifying_Barriers <- HW_Identifying_Barriers  %>% mutate(Reflection = "Identifying Barriers")%>% select(-c(Segment,X,X.1)) %>% filter(!is.na(Filename)&Filename!="")
+
+HW_Youth_and_Unions <- HW_Youth_and_Unions %>% mutate(Reflection = "Youth and Unions")%>% select(-Segment) %>% filter(!is.na(Filename)&Filename!="")
+
+HW_Womens_March <- HW_Womens_March %>%  mutate(Reflection = "Women\'s March") %>% select(-Segment) %>% filter(!is.na(Filename)&Filename!="")
+
+HW_Free_tuition_and_UBI <- HW_Free_tuition_and_UBI %>% mutate(Reflection = "Debates on Free Tuition and Universal Basic Income")%>% select(-Segment) %>% filter(!is.na(Filename)&Filename!="")
+
+final_free_tuition_and_UBI <- final_free_tuition_and_UBI %>% mutate(Reflection = "Final - Free Tuition")  %>% filter(!is.na(Filename)&Filename!="")
+final_youth_and_unions <- read_excel("final, youth and unions.xlsx")%>% mutate(Reflection = "Final - Youth and Unions") %>% filter(!is.na(Filename)&Filename!="")
+
+
+final<-rbind(final_free_tuition_and_UBI,final_youth_and_unions)
+final<-final %>% separate(Filename,sep=",",c("Name","delete")) %>% select(-delete)
+final<-final %>% mutate(`First Name`=gsub('(.*)[A-Z].*','\\1',Name),`Last Name`=gsub('.*([A-Z].*)','\\1',Name)) %>% select(-Name)
+
+# combine to one data set
+all_scores <- rbind(HW_Identifying_Barriers, HW_Youth_and_Unions, HW_Womens_March, HW_Free_tuition_and_UBI) %>% filter(!is.na(Filename)&Filename!="")
+
+all_scores$Name<-gsub(" ","",all_scores$Filename)
+all_scores$Name<-gsub(".docx","",all_scores$Name)
+
+all_scores<-all_scores %>% separate(Name,sep=",",c("Last Name","First Name"))  %>% select(-c(Filename))
+LIWCdata <- all_scores %>% rbind(final)
+
+write.csv(LIWCdata,"LIWCscores-tidydata.csv")
+
+rm(HW_Free_tuition_and_UBI,HW_Identifying_Barriers,HW_Womens_March,HW_Youth_and_Unions,final,final_free_tuition_and_UBI,final_youth_and_unions,all_scores)
+
+
+```
+
+# leadership survey
+```{r}
+lead <- read_csv("leadership.csv")
+# filter out other classes to get C53 responses
+library(ggthemr)
+
+ggthemr('dust')
+# demographics
+firstup <- function(x) {
+  substr(x, 1, 1) <- toupper(substr(x, 1, 1))
+  x
+}
+lead <- lead %>% mutate(age = ifelse(age == "14", "21", age))
+lead$age <- as.numeric(lead$age)
+```
+
+#ByRatee
+```{r}
+ratees<-lead %>% select(c(id1,Q3_1,Q3_2, 
+        Q3_3,Q3_4,Q3_6,eth1, 
+        gender1,age, 
+        birthcountry, 
+         `Year Came to Canada`, 
+        Q19_5))
+ratees$name<-paste(tolower(ratees$Q3_1),tolower(ratees$Q3_2))
+ratees<-ratees %>% distinct(name,.keep_all = T)
+#f,l
+
+rater1<-lead %>% select(c( Q23_1, Q23_2, id2,
+Q24_rater_1_1, Q24_rater_1_2,
+Q24_rater_1_3, Q24_rater_1_4,
+Q24_rater_1_5, Q24_rater_1_6,
+Q24_rater_1_7, Q24_rater_1_8,
+Q24_rater_1_9, Q24_rater_1_10,
+Q24_rater_1_11, Q24_rater_1_12,
+Q24_rater_1_13, Q24_rater_1_14,
+Q24_rater_1_15, Q24_rater_1_16,
+Q24_rater_1_17, Q24_rater_1_18,
+Q24_rater_1_19, Q24_rater_1_20))
+rater1$name <- paste(tolower(rater1$Q23_2),tolower(rater1$Q23_1))
+rater1$rater=1
+rater2<-lead %>% select(c( Q26_1, Q26_2, id3,
+Q24_rater_2_1, Q24_rater_2_2,
+Q24_rater_2_3, Q24_rater_2_4,
+Q24_rater_2_5, Q24_rater_2_6,
+Q24_rater_2_7, Q24_rater_2_8,
+Q24_rater_2_9, Q24_rater_2_10,
+Q24_rater_2_11, Q24_rater_2_12,
+Q24_rater_2_13, Q24_rater_2_14,
+Q24_rater_2_15, Q24_rater_2_16,
+Q24_rater_2_17, Q24_rater_2_18,
+Q24_rater_2_19, Q24_rater_2_20))
+rater2$name <- paste(tolower(rater2$Q26_2),tolower(rater2$Q26_1))
+rater2$rater=2
+#l,f
+rater3<-lead %>% select(c( 
+Q30_1, Q30_2, id4,
+Q24_rater_3_1, Q24_rater_3_2,
+Q24_rater_3_3, Q24_rater_3_4,
+Q24_rater_3_5, Q24_rater_3_6,
+Q24_rater_3_7, Q24_rater_3_8,
+Q24_rater_3_9, Q24_rater_3_10,
+Q24_rater_3_11, Q24_rater_3_12,
+Q24_rater_3_13, Q24_rater_3_14,
+Q24_rater_3_15, Q24_rater_3_16,
+Q24_rater_3_17, Q24_rater_3_18,
+Q24_rater_3_19, Q24_rater_3_20))
+rater3$name <- paste(tolower(rater3$Q30_2),tolower(rater3$Q30_1))
+rater3$rater=3
+
+rater4<-lead %>% select(c( Q33_1, Q33_2, id5,
+Q24_rater_4_1, Q24_rater_4_2,
+Q24_rater_4_3, Q24_rater_4_4,
+Q24_rater_4_5, Q24_rater_4_6,
+Q24_rater_4_7, Q24_rater_4_8,
+Q24_rater_4_9, Q24_rater_4_10,
+Q24_rater_4_11, Q24_rater_4_12,
+Q24_rater_4_13, Q24_rater_4_14,
+Q24_rater_4_15, Q24_rater_4_16,
+Q24_rater_4_17, Q24_rater_4_18,
+Q24_rater_4_19, Q24_rater_4_20))
+
+rater4$name <- paste(tolower(rater4$Q33_2),tolower(rater4$Q33_1))
+rater4$rater=4
+
+rater5<-lead %>% select(c( 
+Q36_1, Q36_2, id6,
+Q24_rater_5_1, Q24_rater_5_2,
+Q24_rater_5_3, Q24_rater_5_4,
+Q24_rater_5_5, Q24_rater_5_6,
+Q24_rater_5_7, Q24_rater_5_8,
+Q24_rater_5_9, Q24_rater_5_10,
+Q24_rater_5_11, Q24_rater_5_12,
+Q24_rater_5_13, Q24_rater_5_14,
+Q24_rater_5_15, Q24_rater_5_16,
+Q24_rater_5_17, Q24_rater_5_18,
+Q24_rater_5_19, Q24_rater_5_20))
+rater5$name <- paste(tolower(rater5$Q36_2),tolower(rater5$Q36_1))
+rater5$rater=5
+
+colnames(rater2)<-colnames(rater1)
+colnames(rater3)<-colnames(rater1)
+colnames(rater4)<-colnames(rater1)
+colnames(rater5)<-colnames(rater1)
+
+frames<-rbind(rater1,rater2,rater3,rater4,rater5)
+raters = frames %>% group_by(name) %>% mutate(rater_number=n())
+raters = raters %>% filter(!is.na(Q23_1)& !is.na(Q23_2))
+
+final = ratees %>% left_join(raters,by="name")
+test1 = ratees %>% left_join(subset(raters,rater_number==1), by="name") %>% filter(!is.na(Q23_1))
+test2 = ratees %>% left_join(subset(raters,rater_number==2), by="name") %>% filter(!is.na(Q23_1))
+test3 = ratees %>% left_join(subset(raters,rater_number==3), by="name") %>% filter(!is.na(Q23_1))
+test4 = ratees %>% left_join(subset(raters,rater_number==4), by="name") %>% filter(!is.na(Q23_1))
+test5 = ratees %>% left_join(subset(raters,rater_number==5), by="name") %>% filter(!is.na(Q23_1))
+
+final<-rbind(test1,test2,test3,test4,test5)
+
+colnames(final)<-gsub("_rater_1","",colnames(final))
+
+final[]<-lapply(final,gsub,pattern="Never",replacement=1,fixed=T)
+final[]<-lapply(final,gsub,pattern="Seldom",replacement=2,fixed=T)
+final[]<-lapply(final,gsub,pattern="Occasionally",replacement=3,fixed=T)
+final[]<-lapply(final,gsub,pattern="Always",replacement=4,fixed=T)
+final[]<-lapply(final,gsub,pattern="Often",replacement=5,fixed=T)
+
+final<-final %>% mutate(across(Q24_1:Q24_20,as.numeric))
+lead=final
+
+rm(ratees,rater1,rater2,rater3,rater4,rater5,raters,test1,test2,test3,test4,test5,frames)
+```
+
+# Questions to be recoded 
+```{r}
+# 16, 19, 20
+# reverse code questions with negative scoring so that positive attitudes reflect positive scoring
+lead$Q24_16r = car::recode(lead$Q24_16, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead$Q24_19r = car::recode(lead$Q24_19, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead$Q24_20r = car::recode(lead$Q24_20, '1=5; 2=4; 3=3; 4=2; 5=1')
+
+# getting average scores for LBDQ scores (initiating structure and consideration)
+lead$initiating_structure <- rowMeans(subset(lead, select = c(Q24_1, Q24_2, Q24_3, Q24_4, Q24_5, Q24_6, Q24_7, Q24_8, Q24_9, Q24_10), na.rm=T))
+lead$consideration <- rowMeans(subset(lead, select = c(Q24_11, Q24_12, Q24_13, Q24_14, Q24_15, Q24_16r, Q24_17, Q24_18, Q24_19r, Q24_20r), na.rm=T))
+##### check reliability ####
+lead <- lead %>% mutate(Gender = gender1,Ethnicity=eth1) 
+lead<-lead %>% mutate(
+  Ethnicity=case_when(Ethnicity=="East-Asian (Chinese, Korean, Japanese)"~"East-Asian",
+                      Ethnicity=="South-East Asian (e.g., Indian, Malay, Pakistani)"~"South-East Asian",
+                      Ethnicity=="Middle Eastern (Arab, Iranian, Lebanese)"~"East-Asian",
+                      Ethnicity=="Black/African-American/West Indian"~"Black",
+                      Ethnicity=="Pacific-Islander (Filipino, Hawaiian)"~"Pacific-Islander",
+                      Ethnicity=="White/Caucasian/European-American"~"White"))
+library(janitor)
+
+lead %>% distinct(name,.keep_all = T) %>% ggplot(aes(x = Gender)) + geom_bar() + labs(title = "Management Class distribution by Gender")
+
+ggsave("class_gender.png")
+lead%>% distinct(name,.keep_all = T) %>% filter(!is.na(Ethnicity))%>% ggplot(aes(x = Ethnicity)) + geom_bar() + labs(title = "Management Class Distribution by Ethnicity")
+ggsave("class_ethnicity.png")
+library(ggcorrplot)
+
+lead$first_name = tolower(lead$Q3_2)
+lead2<-lead %>% group_by(first_name) %>% summarise(task=mean(initiating_structure,na.rm = T),interpersonal=mean(consideration,na.rm = T))
+LIWCdata$first_name=tolower(LIWCdata$`First Name`)
+
+vars<-names(LIWCdata)
+vars<-c(vars[1:24])
+
+full_data <-  LIWCdata %>% select(-c(Reflection,`Last Name`,`First Name`)) %>% group_by(first_name) %>% summarise_each(list(~ mean(., na.rm = TRUE)))   
+
+full_data<-full_join(full_data, lead2, by="first_name") 
+full_data <- full_data %>% filter(!is.na(Cognition))
+full_data$`Task Leadership` <- full_data$task
+full_data$`Interpersonal Leadership` <- full_data$interpersonal
+full_data<-full_data %>% select(c(Analytic,Clout,Cognition,Social,Lifestyle,Work=work,Perception,Tone,Space=space,`Task Leadership`,`Interpersonal Leadership`,first_name))
+
+full_data2<- LIWCdata %>% select(-c(Reflection,`Last Name`,`First Name`)) %>% group_by(first_name) %>% summarise_each(list(~ sd(., na.rm = TRUE)))  
+
+
+all_scores <- full_data %>% pivot_longer( cols = !first_name, names_to = "Variable", values_to = "score")
+
+```
+
+# bar graph
+```{r}
+
+# aggregate scores based on dimensions
+all_scores$Variable <- firstup(all_scores$Variable)
+all_scores <- all_scores %>% mutate(Dimension = case_when(
+Variable == "Analytic"~"Thinking",
+Variable == "Cognition" ~"Thinking"
+,Variable == "Clout" ~ "Social Leadership",
+Variable == "Social"  ~ "Social Leadership",
+ Variable == "Lifestyle" ~  "Work and Lifestyle",
+  Variable == "Work" ~  "Work and Lifestyle",
+    Variable == "Perception"~"Experiential",
+    Variable == "Space"~"Experiential",
+    Variable =="Tone"~"Experiential",
+Variable =="Task Leadership"~"Task Leadership",
+Variable =="Interpersonal Leadership"~"Interpersonal Leadership"
+)) 
+
+all_scores$Variable <- factor(all_scores$Variable, levels =c("Analytic","Cognition","Clout", "Social" ,"Lifestyle", "Work", "Perception", "Space", "Tone","Task Leadership","Interpersonal Leadership"))
+all_scores$Dimension <- factor(all_scores$Dimension, levels =c("Thinking", "Social Leadership","Work and Lifestyle","Experiential","Task Leadership","Interpersonal Leadership"))
+
+library(ggsignif)
+
+# bar plot
+all_scores %>%filter(Variable!="Task Leadership"&Variable!="Interpersonal Leadership" )%>% group_by(Variable) %>% mutate(mean = mean(score,na.rm = T))  %>% 
+ggplot(aes(x = Variable,  y = mean,color=Dimension,fill=Dimension))  + geom_bar(position = "dodge", stat="identity") + labs(title = "", caption = "Percentage of words in student responses that fall into LIWC category.", x = "Dimension",  y ="Mean score") 
+
+ggsave("scores_by_dimension.png",width=10,height=5,dpi=300)
+library(ggpubr)
+```
+
+
+# correlation matrix plot
+```{r}
+
+# compute correlation matrix
+vals <-full_data %>% select(-c(first_name))
+
+vals$Thinking <- rowMeans(subset(vals, select = c(Analytic, Cognition)), na.rm = TRUE)
+
+vals$`Social Leadership` <- rowMeans(subset(vals, select = c(Clout, Social)), na.rm = TRUE)
+
+vals$`Work and Lifestyle`  <- rowMeans(subset(vals, select = c(Lifestyle, Work)), na.rm = TRUE)
+
+vals$`Experiential`  <- rowMeans(subset(vals, select = c(Perception,Tone,Space)), na.rm = TRUE)
+
+vals <- vals %>% select(c(`Experiential`, `Social Leadership`, `Work and Lifestyle`, Thinking,  `Interpersonal Leadership`, `Task Leadership`))
+
+corr <-cor(vals, use = "complete.obs") 
+library(corrplot)
+testRes=cor.mtest(vals,conf.level=0.95)
+p.df = as.data.frame(ggcorrplot::cor_pmat(vals))
+
+# p.mat <- cor_mat(allvals)
+library(ggcorrplot)
+
+# Function to get asteriks
+labs.function = function(x){
+  case_when(x > 0.05 ~ "",
+            x <= 0.05 & x >= 0.01 ~ "*",
+            x < 0.01 & x >= 0.001 ~ "**",
+            x < 0.001 ~ "***")
+}
+# Get asteriks matrix based on p-values
+p.labs = p.df  %>%                      
+  mutate_all(labs.function)
+cor.plot = ggcorrplot(corr, hc.order = TRUE, type = "lower",
+                      lab = TRUE)
+# Reshaping asteriks matrix to match ggcorrplot data output
+p.labs$Var1 = as.factor(rownames(p.labs))
+library(data.table)
+p.labs = melt(p.labs, id.vars = "Var1", variable.name = "Var2", value.name = "lab")
+
+p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var1, p.labs$Var2), 
+                                  paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
+                      "No", "Yes")
+
+p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
+
+
+# Subsetting asteriks matrix to only those rows within ggcorrplot data
+p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var1, p.labs$Var2), 
+                                  paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
+                      "No", "Yes")
+
+p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
+
+# Add asteriks to ggcorrplot
+cor.plot.labs = cor.plot + 
+  geom_text(aes(x = p.labs$Var1, 
+                y = p.labs$Var2), 
+            label = p.labs$lab, 
+            nudge_y = 0.25, 
+            size = 5)
+
+cor.plot.labs
+
+ggsave("corrplot.png")
+
+
+
+
+
+
+
+```
+
+```{r}
+# correlation matrix plot
+all_scores$Variable <- factor(all_scores$Variable, levels =c("Analytic","Cognition","Clout", "Social" ,"Lifestyle", "Work", "Perception", "Space", "Tone","Task Leadership","Interpersonal Leadership"))
+# compute correlation matrix
+vals <-full_data %>% select(-c(first_name ))
+
+corr <-cor(vals, use = "complete.obs") 
+library(corrplot)
+testRes=cor.mtest(vals,conf.level=0.95)
+p.df = as.data.frame(ggcorrplot::cor_pmat(vals))
+
+# p.mat <- cor_mat(allvals)
+library(ggcorrplot)
+
+# Function to get asteriks
+labs.function = function(x){
+  case_when(x > 0.05 ~ "",
+            x <= 0.05 & x >= 0.01 ~ "*",
+            x < 0.01 & x >= 0.001 ~ "**",
+            x < 0.001 ~ "***")
+}
+# Get asteriks matrix based on p-values
+p.labs = p.df  %>%                      
+  mutate_all(labs.function)
+cor.plot = ggcorrplot(corr, hc.order = F, type = "lower",ggtheme = theme_classic,
+                      lab = TRUE,colors = c("darkgreen","white","orange"))
+# Reshaping asteriks matrix to match ggcorrplot data output
+p.labs$Var1 = as.factor(rownames(p.labs))
+library(data.table)
+p.labs = melt(p.labs, id.vars = "Var1", variable.name = "Var2", value.name = "lab")
+
+p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var1, p.labs$Var2), 
+                                  paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
+                      "No", "Yes")
+
+p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
+
+
+# Subsetting asteriks matrix to only those rows within ggcorrplot data
+p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var1, p.labs$Var2), 
+                                  paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
+                      "No", "Yes")
+
+p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
+
+# Add asteriks to ggcorrplot
+cor.plot.labs = cor.plot + 
+  geom_text(aes(x = p.labs$Var1, 
+                y = p.labs$Var2), 
+            label = p.labs$lab, 
+            nudge_y = 0.25, 
+            size = 5)
+
+cor.plot.labs
+
+ggsave("corrplot.png",dpi=300,width=9)
+```
+

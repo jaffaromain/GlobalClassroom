@@ -1,0 +1,501 @@
+---
+title: "Prelim Analysis"
+author: "Jaffa Romain"
+date: '2022-04-16'
+output:
+  word_document: default
+  pdf_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+LIWCdata <- read_csv("~/Desktop/Global Classroom/LIWCAnalysis-no segmentation.csv")
+LIWCpresentations <- read_csv("LIWC-22 Results - Presentations.csv")
+
+LIWCdata <- LIWCdata %>% mutate(reflection = case_when(
+  str_detect(Filename, 'Arbitration') ~ 'Arbitration Role Play', 
+  str_detect(Filename, 'Union')~ 'Youth and Union', 
+  str_detect(Filename, 'youth')~ 'Youth and Union', 
+ str_detect(Filename, 'Barriers')~ 'Identifying Barriers',
+  str_detect(Filename, 'Barrier')~ 'Identifying Barriers',
+ str_detect(Filename, 'barriers')~ 'Identifying Barriers',
+ str_detect(Filename, 'Debates') ~ 'Debates on Free Tuition and Universal Basic Income',
+  str_detect(Filename, 'Tuition') ~ 'Debates on Free Tuition and Universal Basic Income',
+   str_detect(Filename, 'tuition') ~ 'Debates on Free Tuition and Universal Basic Income',
+ 
+  str_detect(Filename, 'Debate') ~ 'Debates on Free Tuition and Universal Basic Income',
+ str_detect(Filename, 'debate')~ 'Debates on Free Tuition and Universal Basic Income',
+ str_detect(Filename, 'debate')~ 'Debates on Free Tuition and Universal Basic Income',
+  str_detect(Filename, 'Negotiation Preparation') ~ 'Negotiation Preparation', 
+ str_detect(Filename, 'March')~'Women\'s March',
+ str_detect(Filename, 'march')~'Women\'s March',
+ str_detect(Filename, 'March') ~'Women\'s March') )
+
+LIWCpresentations <- LIWCpresentations %>% mutate(reflection = "Presentation")
+
+LIWCdata <- LIWCdata %>% filter(reflection != "Arbitration Role Play" & reflection != "Negotiation Preparation" & Filename != "negotiationgroup3employer_LATE_200017_17001476_mghc53 debate-1.pdf") 
+
+
+exam_scores <- read_csv("~/Desktop/Global Classroom/LIWC-22 Results - c53 exam responses q1-2 - LIWC Analysis.csv")
+
+exam_scores$reflection <- "Exam reflections"
+
+chem_scores <- read_csv("~/Desktop/Global Classroom/Final Chem thesis + Reflections/LIWC-22 Results - Final Chem thesis + Reflection___ - LIWC Analysis.csv")
+
+chem_scores <- chem_scores %>% mutate(reflection = "chemistry")
+LIWCdata <- rbind(LIWCdata, exam_scores, chem_scores)
+
+```
+
+```{r}
+LIWCpresentations <- LIWCpresentations  %>% rename(Filename = "Student") %>% select(-`...3`)
+
+LIWCdata$Text <- NA
+
+LIWCdata <- LIWCdata %>% dplyr::select(-Segment)
+fulldata <- rbind(LIWCdata, LIWCpresentations)
+management <- fulldata %>% filter(reflection != "chemistry")
+
+write.csv(fulldata,"All_Reflections_Global_Classroom.csv", row.names = FALSE)
+
+```
+
+
+# Principal Component Analysis
+
+- to reduce noise: removes redundant/useless variables 
+- minimizes collinearity - reduces number of independent variables that are highly correlated to each other
+- Varimax rotation
+- eigenvalues greater than 1 (based on recommendations from other research data analyses)
+- 
+```{r, include=FALSE}
+library(psych)
+library(factoextra)
+
+# remove unnecessesary linguistic variables (word count, number of adjectives, number of big words,etc)
+PCAdata <- management%>% dplyr::select(-c(Filename, WC, prep, adverb, adj, det, Dic, WPS, BigWords, reflection, Text))
+PCAdata2<- PCAdata[,apply(PCAdata, 2, function(x) all(x > 0))]
+                   
+PCA_scaled <- PCAdata2 %>% mutate_all(~scale(.) %>% as.vector)
+
+ 
+# STANDARDIZE DATA
+# to transform all variables to the same scale
+# Average scores below the mean of 0 indicated that participants used fewer words and phrases from the word categories compared with the mean
+
+# Factor scores that did not change significantly between the two writing assignments can be interpreted as representing whatever attitudes, experiences, or beliefs typical of participants that were unchanged by the educational intervention. 
+
+
+###### Preliminary Diagnostic Checks ######
+# Bartlett's test for  correlation matrix
+cortest.mat(PCA_scaled)
+
+
+####### squared multiple correlations (smc) #######
+smc1= smc(PCA_scaled) # all > 0.3 - no factors need to be removed
+
+#### outliers #####
+outlier(PCA_scaled, plot=T, bad=10, na.rm=T) 
+
+
+# Determining number of factors to extract
+library(nFactors)
+library(factoextra)
+# common rule - atleast 70% of total variation explained with eigenvalues of at least 1
+pca=prcomp(PCA_scaled)
+# rotation - implement a prior shuffling of varimax rotation - better captures explained variance
+summary(pca)
+
+
+# scree - determined 4 key dimensions
+fviz_screeplot(pca, type="lines", addlabels=TRUE, ylim = c(0, 80), main=" PCA Scree Plot"
+               )
+get_eig(pca)
+
+# 5 is optimal
+
+library(ggfortify)
+
+# loadings
+
+
+res.pc <-principal(PCA_scaled, nfactors=4, rotate="varimax")
+# cronbach alpha 
+
+library(FactoMineR)
+res2 <- PCA(PCA_scaled, graph = FALSE, scale.unit = T)
+
+loadings <-res2$var$cor # table with factor loadings
+
+
+library(kableExtra)
+vars = as.data.frame(res.pc$loadings)
+
+vars = data.frame(matrix(as.numeric(res.pc$loadings), attributes(res.pc$loadings)$dim, dimnames=attributes(res.pc$loadings)$dimnames))
+
+vars %>% kable(caption = "Correlations between Principal Components and the original scores.", digits = 2) %>% save_kable("tbl1.jpg")
+
+
+loadings <- as.matrix.data.frame(res.pc$loadings)
+colnames(loadings) <- c("PC1", "PC2", "PC3", "PC4")
+rownames(loadings) <- colnames(PCA_scaled)
+
+```
+
+# ANOVA
+```{r}
+# setting up data - get reflection type and LIWC scores 
+Files <- management$Filename
+data <- cbind(Files, PCAdata2)
+# reformat data
+reflection_type <- management$reflection
+data <- data %>% cbind(reflection_type)
+```
+
+```{r}
+data_long = data %>% pivot_longer(!c(Files, reflection_type), names_to = "Variable", values_to = "score")
+###################################################
+library(rstatix)
+data_long %>% filter(reflection_type == "Exam reflections") %>% group_by(reflection_type, Variable) %>% get_summary_stats(score, show =c("n", "mean", "sd"))
+
+
+data_long <- data_long %>% filter(reflection_type != "Negotiation Preparation" & reflection_type !="Arbitration Role Play" & reflection_type != "chemistry")
+# analytic
+library(car)
+dt <- data_long %>% filter(Variable == "work") 
+summary(aov(score~reflection_type, data=dt))
+
+
+```
+
+# leadership survey
+```{r}
+lead<- read_csv("leadership-survey-c53.csv")
+
+# filter out other classes to get C53 responses
+lead <- lead %>% filter(Q3_6 == "MGHC53"| Q3_6 == "MGHC53H3")
+
+```
+
+Leadership plots
+```{r}
+library(ggthemr)
+ggthemr('pale')
+# demographics
+firstup <- function(x) {
+  substr(x, 1, 1) <- toupper(substr(x, 1, 1))
+  x
+}
+lead$Q19_1 <- tolower(lead$Q19_1) 
+lead$Q19_1 <-firstup(lead$Q19_1) 
+
+
+lead <- lead %>% mutate(age = ifelse(Q19_3 == "14", "21", Q19_3))
+lead$age <- as.numeric(lead$age)
+
+
+lead <- lead %>% mutate(Q19_2 = as.numeric(Q19_2))
+
+lead <- lead %>% mutate(Ethnicity = case_when(Q8 == 1 ~ "Hispanic//Latino/", 
+                     Q8 ==  2 ~ "White/Caucasian",        Q8 ==  3 ~ "Black//West Indian",
+                     Q8 ==  4 ~ "Middle Eastern", Q8 == 5 ~ " South-East Asian", 
+                     Q8 == 6 ~ "East-Asian",    Q8 == 7 ~ "Pacific-Islander",
+                     Q8 ==  8 ~ "Native American",        Q8 == NA ~ "not recorded"))
+
+
+# Questions to be car::recoded 
+
+# 16, 19, 20
+# reverse code questions with negative scoring so that positive attitudes reflect positive scoring
+lead$Q24_1_16r = car::recode(lead$Q24_1_16, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead$Q24_1_19r = car::recode(lead$Q24_1_19, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead$Q24_1_20r = car::recode(lead$Q24_1_20, '1=5; 2=4; 3=3; 4=2; 5=1')
+
+lead$Q24_2_16r = car::recode(lead$Q24_2_16, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead$Q24_2_19r = car::recode(lead$Q24_2_19, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead$Q24_2_20r = car::recode(lead$Q24_2_20, '1=5; 2=4; 3=3; 4=2; 5=1')
+
+lead$Q24_3_16r = car::recode(lead$Q24_3_16, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead$Q24_3_19r = car::recode(lead$Q24_3_19, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead$Q24_3_20r = car::recode(lead$Q24_3_20, '1=5; 2=4; 3=3; 4=2; 5=1')
+
+
+lead$Q24_4_16r = car::recode(lead$Q24_4_16, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead$Q24_4_19r = car::recode(lead$Q24_4_19, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead$Q24_4_20r = car::recode(lead$Q24_4_20, '1=5; 2=4; 3=3; 4=2; 5=1')
+
+
+lead$Q24_5_16r = car::recode(lead$Q24_5_16, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead$Q24_5_19r = car::recode(lead$Q24_5_19, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead$Q24_5_20r = car::recode(lead$Q24_5_20, '1=5; 2=4; 3=3; 4=2; 5=1')
+
+
+# aggregate and average ratings from team members
+lead$Q24_1_mean <- rowMeans(subset(lead, select = c(Q24_1_1, Q24_2_1, Q24_3_1, Q24_4_1, Q24_5_1)), na.rm = TRUE)
+lead$Q24_2_mean <- rowMeans(subset(lead, select = c(Q24_1_2, Q24_2_2, Q24_3_2, Q24_4_2, Q24_5_2)), na.rm = TRUE)
+lead$Q24_3_mean <- rowMeans(subset(lead, select = c(Q24_1_3, Q24_2_3, Q24_3_3, Q24_4_3, Q24_5_3)), na.rm = TRUE)
+lead$Q24_4_mean <- rowMeans(subset(lead, select = c(Q24_1_4, Q24_2_4, Q24_3_4, Q24_4_4, Q24_5_4)), na.rm = TRUE)
+lead$Q24_5_mean <- rowMeans(subset(lead, select = c(Q24_1_5, Q24_2_5, Q24_3_5, Q24_4_5, Q24_5_5)), na.rm = TRUE)
+lead$Q24_6_mean <- rowMeans(subset(lead, select = c(Q24_1_6, Q24_2_6, Q24_3_6, Q24_4_6, Q24_5_6)), na.rm = TRUE)
+lead$Q24_7_mean <- rowMeans(subset(lead, select = c(Q24_1_7, Q24_2_7, Q24_3_7, Q24_4_7, Q24_5_7)), na.rm = TRUE)
+lead$Q24_8_mean <- rowMeans(subset(lead, select = c(Q24_1_8, Q24_2_8, Q24_3_8, Q24_4_8, Q24_5_8)), na.rm = TRUE)
+lead$Q24_9_mean <- rowMeans(subset(lead, select = c(Q24_1_9, Q24_2_9, Q24_3_9, Q24_4_9, Q24_5_9)), na.rm = TRUE)
+lead$Q24_10_mean <- rowMeans(subset(lead, select = c(Q24_1_10, Q24_2_10, Q24_3_10, Q24_4_10, Q24_5_10)), na.rm = TRUE)
+
+lead$Q24_11_mean <- rowMeans(subset(lead, select = c(Q24_1_11, Q24_2_11, Q24_3_11, Q24_4_11, Q24_5_11)), na.rm = TRUE)
+lead$Q24_12_mean <- rowMeans(subset(lead, select = c(Q24_1_12, Q24_2_12, Q24_3_12, Q24_4_12, Q24_5_12)), na.rm = TRUE)
+lead$Q24_13_mean <- rowMeans(subset(lead, select = c(Q24_1_13, Q24_2_13, Q24_3_13, Q24_4_13, Q24_5_13)), na.rm = TRUE)
+lead$Q24_14_mean <- rowMeans(subset(lead, select = c(Q24_1_14, Q24_2_14, Q24_3_14, Q24_4_14, Q24_5_14)), na.rm = TRUE)
+lead$Q24_15_mean <- rowMeans(subset(lead, select = c(Q24_1_15, Q24_2_15, Q24_3_15, Q24_4_15, Q24_5_15)), na.rm = TRUE)
+lead$Q24_16r_mean <- rowMeans(subset(lead, select = c(Q24_1_16r, Q24_2_16r, Q24_3_16r, Q24_4_16r, Q24_5_16r)), na.rm = TRUE)
+lead$Q24_17_mean <- rowMeans(subset(lead, select = c(Q24_1_17, Q24_2_17, Q24_3_17, Q24_4_17, Q24_5_17)), na.rm = TRUE)
+lead$Q24_18_mean <- rowMeans(subset(lead, select = c(Q24_1_8, Q24_2_18, Q24_3_18, Q24_4_18, Q24_5_18)), na.rm = TRUE)
+lead$Q24_19r_mean <- rowMeans(subset(lead, select = c(Q24_1_19r, Q24_2_19r, Q24_3_19r, Q24_4_19r, Q24_5_19r)), na.rm = TRUE)
+lead$Q24_20r_mean <- rowMeans(subset(lead, select = c(Q24_1_20r, Q24_2_20r, Q24_3_20r, Q24_4_20r, Q24_5_20r)), na.rm = TRUE)
+
+# getting average scores for LBDQ scores (initiating structure and consideration)
+lead$initiating_structure <- rowMeans(subset(lead, select = c(Q24_1_mean, Q24_2_mean, Q24_3_mean, Q24_4_mean, Q24_5_mean, Q24_6_mean, Q24_7_mean, Q24_8_mean, Q24_9_mean, Q24_10_mean), na.rm=T))
+lead$consideration <- rowMeans(subset(lead, select = c(Q24_11_mean, Q24_12_mean, Q24_13_mean, Q24_14_mean, Q24_15_mean, Q24_16r_mean, Q24_17_mean, Q24_18_mean, Q24_19r_mean, Q24_20r_mean), na.rm=T))
+##### check reliability ####
+
+lead <- lead %>% mutate(Gender = case_when(Q18 == 1 ~ "Male", Q18 == 2 ~ "Female")) 
+
+lead %>% ggplot(aes(x = Gender)) + geom_bar() + labs(title = "Management Class distribution by Gender")
+
+lead %>% ggplot(aes(x = Ethnicity)) + geom_bar() + labs(title = "Management Class Distribution by Ethnicity")
+library(janitor)
+tabyl(lead$Ethnicity)
+tabyl(lead$Gender)
+library(ggcorrplot)
+
+
+liwscores <- data %>% 
+  separate(Files, into = c("name", "other"), sep=c("_"), extra = "merge") %>% dplyr::select(-other)
+
+
+ fulldata <- liwscores %>%  separate(name, into = c("name", "other"), sep=" ", extra = "merge") %>% dplyr::select(-other) %>% filter(reflection_type != "Negotiation Preparation" & reflection_type !="Arbitration Role Play" & reflection_type != "chemistry")
+ 
+ fulldata <- fulldata %>%  separate(name, into = c("name", "other"), sep="-", extra = "merge") %>% dplyr::select(-other) 
+ 
+ lead$first_name = tolower(lead$Q3_2)
+full<- fulldata%>% mutate(first_name = case_when(
+  str_detect(name, 'yujie')~ 'yujie', 
+  str_detect(name, 'sinuo')~ 'sinuo', 
+  str_detect(name, 'miguel')~ 'miguel', 
+ str_detect(name, 'yiming')~ 'yiming',
+  str_detect(name, 'brian')~ 'brian',
+ str_detect(name, 'samia')~ 'samia',
+ str_detect(name, 'yunzi') ~'yunzi',
+ str_detect(name, 'sandy') ~ 'sandy',
+  str_detect(name, 'ami') ~ 'ami',
+   str_detect(name, 'diyuan') ~ 'diyuan',
+ str_detect(name, 'bada') ~ 'bada',
+  str_detect(name, 'tim') ~ 'tim',
+  str_detect(name, 'kosiha') ~ 'kosiha',
+ str_detect(name, 'shayan')~ 'shayan',
+ str_detect(name, 'xinyue')~  'xinyue') )
+
+
+#full_data <- left_join(full, lead, by="first_name") 
+
+#full_data <- full_data %>% filter(!is.na(first_name))
+#full_data$`Task Leadership` <- full_data$initiating_structure
+#full_data$`Interpersonal Leadership` <- full_data$consideration
+# all_scores$Variable <- factor(all_scores$Variable, levels =c("Analytic","Cognition", "Clout", "Social", "Lifestyle", "Work", "Perception", "Space", "Tone", "Task Leadership", "Interpersonal Leadership"))
+
+marks <- read_csv("2022-08-23T1700_Grades-MGHC53H3_F_LEC01.csv")
+marks$Student <- tolower(marks$Student) 
+marks <- marks %>% separate(Student, sep = ", ", into = c("other", "name"))  %>% select(-other) 
+
+marks <-marks%>% mutate(first_name = case_when(
+  str_detect(name, 'yujie')~ 'yujie', 
+  str_detect(name, 'sinuo')~ 'sinuo', 
+  str_detect(name, 'miguel')~ 'miguel', 
+ str_detect(name, 'yiming')~ 'yiming',
+  str_detect(name, 'brian')~ 'brian',
+ str_detect(name, 'samia')~ 'samia',
+ str_detect(name, 'yunzi') ~'yunzi',
+ str_detect(name, 'sandy') ~ 'sandy',
+  str_detect(name, 'ami') ~ 'ami',
+   str_detect(name, 'diyuan') ~ 'diyuan',
+ str_detect(name, 'iram') ~ 'bada',
+  str_detect(name, 'iram') ~ 'bada',
+
+  str_detect(name, 'tim') ~ 'tim',
+  str_detect(name, 'kosiha') ~ 'kosiha',
+ str_detect(name, 'shayan')~ 'shayan',
+ str_detect(name, 'xin')~  'xinyue') )
+
+final <- right_join(full, marks, by = "first_name")
+write.csv(final,"Reflections and marks.csv", row.names = FALSE)
+
+```
+
+
+```{r}
+
+library(reshape2)
+library(dplyr)
+
+# summary_df <- melt(df) %>% 
+#   mutate(time = as.numeric(substr(variable, 2, 2))) %>%
+#   transmute(ID, time, modality = as.factor(substr(variable, 3, 5)), 
+#             score = value) %>%
+#   group_by(modality, time) %>%
+#   summarize(mean = mean(score), 
+#             upper = mean + 1.96 * sd(score)/sqrt(length(score)),
+#             lower = mean - 1.96 * sd(score)/sqrt(length(score)))
+# 
+# 
+# ggplot(summary_df, aes(x = time, y = mean, colour = modality)) + 
+#   geom_line(size = 1) + 
+#   geom_point(aes(shape = modality), size = 3) +
+#   geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2, size = 1) +
+#   theme_classic() +
+#   scale_color_discrete(labels = c("Autonomic", "Motor", "Sensory")) +
+#   scale_shape_discrete(labels = c("Autonomic", "Motor", "Sensory")) +
+#   theme(legend.position = "bottom", text = element_text(size = 12)) +
+#   labs(x = "Cycles", y = "Symptom score")
+```
+
+# bar graph
+```{r}
+
+# getting chem and management scores
+chem_scores_dat <- chem_scores %>% select(Analytic,Cognition, Clout, Social, Lifestyle, work, Perception, space, Tone) %>% mutate(Course = "Chemistry")
+
+management_scores <- LIWCdata %>% select(Analytic,Cognition, Clout, Social, Lifestyle, work, Perception, space, Tone)  %>% mutate(Course = "Management")
+
+# combine to one data set
+all_scores <- rbind(chem_scores_dat, management_scores)
+all_scores <- all_scores %>% pivot_longer(-Course, names_to = "Variable", values_to = "score")
+
+# aggregate scores based on dimensions
+all_scores$Variable <- firstup(all_scores$Variable)
+all_scores <- all_scores %>% mutate(var2 = case_when(Variable == "Analytic"~"Thinking",
+Variable == "Cognition" ~"Thinking",
+Variable == "Clout" ~ "Social Leadership",
+Variable == "Social"  ~ "Social Leadership",
+ Variable == "Lifestyle" ~  "Work and Lifestyle",
+  Variable == "Work" ~  "Work and Lifestyle",
+    Variable == "Perception"~"Experiential",
+    Variable == "Space"~"Experiential",
+    Variable =="Tone"~"Experiential"
+))
+
+all_scores$Variable <- factor(all_scores$Variable, levels =c("Analytic","Cognition", "Clout", "Social", "Lifestyle", "Work", "Perception", "Space", "Tone"))
+
+
+library(ggsignif)
+
+# bar plot
+all_scores %>% group_by(Variable, Course) %>% mutate(mean = mean(score))  %>% 
+ggplot(aes(x = Variable,  y = mean, fill = Course))  + geom_bar(position = "dodge", stat="identity") + labs(title = "", caption = "Percentage of words in student responses that fall into LIWC category.", x = "Dimension",  y ="Mean score")  + theme(legend.position = c(0.8, 0.8)) + ylim(0,105) +  scale_fill_manual(values = c("#5B965B","#E26B1C" )) +
+  
+  geom_signif(y_position = c(100,100), xmin = c(0.5,2.5), 
+              xmax = c(2,4.3), annotation = c("Thinking","Social Leadership"),
+              tip_length = .05)  +
+  
+  geom_signif(y_position = c(60,60), xmin = c(4.6,6.5), 
+              xmax = c(6.4,9.5), annotation = c("Work & Lifestyle","Experiential"),
+              tip_length = .05)
+
+
+
+```
+
+
+# correlation matrix plot
+```{r}
+chem_scaled <- chem_scores_dat %>% select(-c(Course))
+chem_scaled <- chem_scaled %>% mutate_all(~scale(.) %>% as.vector)
+chem_scaled$`Task Leadership` <- NA
+chem_scaled$`Interpersonal Leadership` <- NA
+
+full_data <- full_data %>% filter(reflection != "Exam reflections")
+# compute correlation matrix
+vals <- full_data %>% select(c(Analytic,Cognition, Clout, Social, Lifestyle, work, Perception, space, Tone,`Task Leadership`, `Interpersonal Leadership` ))
+
+chemvals <- chem_scaled %>% select(c(Analytic,Cognition, Clout, Social, Lifestyle, work, Perception, space, Tone,`Task Leadership`, `Interpersonal Leadership` ))
+
+allvals <- rbind(vals, chemvals)
+
+allvals$Thinking <- rowMeans(subset(allvals, select = c(Analytic, Cognition)), na.rm = TRUE)
+
+
+allvals$`Social Leadership` <- rowMeans(subset(allvals, select = c(Clout, Social)), na.rm = TRUE)
+
+
+allvals$`Work and Lifestyle`  <- rowMeans(subset(allvals, select = c(Lifestyle, work)), na.rm = TRUE)
+
+
+allvals$`Experiential`  <- rowMeans(subset(allvals, select = c(Perception, space, Tone)), na.rm = TRUE)
+
+allvals <- allvals %>% select(c(`Experiential`, `Social Leadership`, `Work and Lifestyle`, Thinking,  `Interpersonal Leadership`, `Task Leadership`))
+
+corr <-cor(allvals, use = "complete.obs") 
+
+
+# p.mat <- cor_mat(allvals)
+library(ggcorrplot)
+
+ggcorrplot(corr, hc.order = TRUE, sig.level = 0.05, lab_size = 1.5, type = "lower", outline.col = "white", ggtheme = ggplot2::theme_classic, 
+   colors = c("#6D9EC1", "white", "#E46726"))
+
+```
+
+
+# management scores by reflection
+```{r}
+
+man_data <- management %>% select(Analytic,Cognition, Clout, Social, Lifestyle, work, Perception, space, Tone, Filename, reflection) 
+
+
+
+data_long = man_data %>% pivot_longer(!c(Filename, reflection), names_to = "Variable", values_to = "score")
+data_long <- data_long %>% filter(reflection != "Negotiation Preparation" & reflection !="Arbitration Role Play" & reflection != "Exam Reflections")
+###################################################
+library(rstatix)
+data_long %>% filter(reflection == "Presentation") %>% group_by(reflection, Variable) %>% get_summary_stats(score, show =c("n", "mean", "sd"))
+
+
+# analytic
+library(car)
+dt <- data_long %>% filter(Variable == "Cognition") 
+summary(aov(score~reflection, data=dt))
+
+
+# tsummarized <- data_long %>% group_by(reflection_type, Variable) %>% summarize(score = mean(score)) %>% filter(Variable != "Cognition", Variable != "Linguistic", Variable != "Cognition", Variable != "socrefs") 
+# 
+# 
+# ggplot(dtsummarized, aes(x=reflection_type, y=score, group=Variable)) +
+#   geom_line(aes(linetype=Variable, color=Variable))+
+#   geom_point(aes(color=Variable))+
+#   theme(legend.position="top")
+```
+
+# Comparing pre - post presentations
+
+```{r}
+man_data <- final  %>% filter( reflection_type != "Exam reflections")
+
+
+time_data <- man_data %>% mutate(Time = ifelse(reflection_type == "Presentation", "Presentation", "Pre-Presentation"))
+
+time_data_long = time_data %>% pivot_longer(!c(name.x, reflection, Time), names_to = "Variable", values_to = "score")
+
+library(ggplot2)
+
+time_data_long %>%  ggplot(aes(x = Variable,  y = score, fill = Time))  + geom_bar(position = "dodge", stat="identity") + labs(title = "", caption = "Percentage of words in student responses that fall into LIWC categories by Reflection Time", x = "Dimension",  y ="Mean score")  + theme(legend.position = c(0.8, 0.8)) + ylim(0,105) + theme_classic()
+
+
+####
+# insert final grades
+mod1 <- lm(`Assignm` ~ Clout + Social + Cognition + Analytic, data =  )
+summary(mod1)
+
+
+```
+
+

@@ -1,0 +1,806 @@
+---
+title: "Global Classroom Analysis Writeup - 2024"
+author: "Jaffa Romain"
+date: "2024-04-20"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse);library(data.table);library(janitor);library(knitr);library(kableExtra);library(ggthemr); library(sjmisc); library(gtsummary);library(psych)
+
+ggthemr('fresh')
+```
+
+# Summary Statistics 
+## Class Composition
+```{r class distribution, echo=F}
+# 2022 Class
+summary_vars = c("Name", "Ethnicity", "Gender", "English as Primary Language", "Major", "Year")
+
+leadership_2022<- read_csv("globalclassroom code 2022 Winter/leadership-survey-c53.csv")
+leadership_2022 <- leadership_2022 %>% mutate(Course = toupper(Course)) %>% filter(grepl("53", Course))
+# need students from 2022 only 
+
+leadership_2022 <- leadership_2022 %>% mutate(Name = paste(tolower(`Last Name`),sep = "", tolower(`First Name`))) %>% filter(!is.na(Name)) %>% mutate(Year = 2022)
+class_2022 <-leadership_2022 %>% select(summary_vars) 
+
+# 2023 Class
+leadership_2023 <- read_csv("data - winter 2023/leadership.csv")%>% mutate(Name = paste(tolower(Q3_1),sep = "", tolower(Q3_2))) %>% rename("English as Primary Language" = Q20) %>% mutate (Year = "2023")
+class_2023 = leadership_2023%>% select(summary_vars) 
+
+# 2024 Class
+leadership_2024 <- read_csv("data - winter 2024/Student Leadership Winter.csv")  %>% mutate (Year = "2024") 
+
+# filtering to only include students from C53 course
+leadership_2024 = leadership_2024%>% distinct(Name,.keep_all = T) %>% filter(!grepl("23", `Course Enrolled`))
+
+class_2024 = leadership_2024 %>% select(summary_vars) 
+
+summary_dat <- rbind(class_2022, class_2023, class_2024)
+```
+
+```{r, echo=FALSE}
+################################### SUMMARY TABLES #################################################
+summary_dat<- summary_dat%>% mutate(Ethnicity = 
+case_when(Ethnicity == 1 ~ "Hispanic/Latino", Ethnicity ==  2 ~ "White/Caucasian",
+          Ethnicity ==  3 ~ "Black", Ethnicity ==  4 ~ "Middle Eastern", 
+          Ethnicity == 5 ~ "South-East Asian",  Ethnicity == 6 ~ "East-Asian",    
+          Ethnicity == 7 ~ "Pacific Islander", Ethnicity ==  8 ~ "Native American",
+          Ethnicity == "East-Asian (Chinese, Korean, Japanese)"~"East-Asian",
+          Ethnicity == "Black/African-American/West Indian" ~ "Black",
+          Ethnicity == "South-East Asian (e.g., Indian, Malay, Pakistani)" ~ "South-East Asian" ,
+          Ethnicity == "Pacific-Islander (Filipino, Hawaiian)"~"Pacific Islander",
+          Ethnicity == "White/Caucasian/European-American"~"White/Caucasian",
+          Ethnicity == "Hispanic/Mexican American/Latino/Chicano" ~ "Hispanic/Latino",
+        Ethnicity == "Middle Eastern (Arab, Iranian, Lebanese)"~"Middle Eastern")) %>% 
+mutate(Sex = case_when(
+  Gender == 1~"Male", Gender == 2~"Female", Gender == "Male"~"Male", 
+  Gender == "Female"~"Female")) %>% 
+mutate(`English as Primary Language?` = 
+  case_when(`English as Primary Language` == 1 ~"Yes", `English as Primary Language` == 2 ~"No", 
+            `English as Primary Language` == "Yes" ~ "Yes",`English as Primary Language` == "No" ~ "No" ))
+summary_dat %>% select(-c(Name, Major, Gender)) %>% gtsummary::tbl_summary(by =Year) %>% as_gt() %>% gt::gtsave(filename = "summarystatistics.docx")
+```
+
+
+# Survey Responses - 2024
+## Culinaria
+```{r}
+culsurv <- engagement_survey_Winter_2024 <- read_csv("data - winter 2024/engagement-survey Winter 2024.csv")
+
+culsurv <- culsurv %>% filter(!is.na(`Last Name`))
+
+# Food Neophobia Survey 
+FNdat <- culsurv %>% select(matches("FN"))
+FNdat <-  FNdat %>% pivot_longer(everything(),names_to = "Question", values_to = "Response") %>% filter(!is.na(Response))
+
+# Social Dominance Survey 
+SDO <- culsurv %>% select(matches("SDO"))
+SDO <-  SDO %>% pivot_longer(everything(),names_to = "Question", values_to = "Response")%>% filter(!is.na(Response))
+# plotting results
+FNdat = sapply(FNdat, gsub, pattern = "FN - ", replacement= "")
+FNdat %>%  ggplot(aes(x = Response)) + geom_bar() + facet_wrap(~Question,ncol = 1)
+ggsave("FN_surveyres.png", width =10, height = 15)
+
+SDO$Question = gsub(" - ","",SDO$Question)
+SDO$Question = gsub("SDO ","",SDO$Question)
+SDO$Question = gsub("SDO","",SDO$Question)
+SDO$Question = gsub("SDO","",SDO$Question)
+SDO$Question = gsub("Please indicate how strongly you favour or oppose the following statements:","",SDO$Question)
+
+
+SDO %>%  ggplot(aes(x = Response)) + geom_bar() + facet_wrap(~Question,ncol = 1)
+ggsave("SDO_surveyres.png", width =10, height = 15)
+
+# Culinaria Feedback
+cul_feedback = culsurv[,c(28:31)] %>% pivot_longer(everything(),names_to = "Question", values_to = "Response")%>% filter(!is.na(Response))
+cul_feedback$Question = gsub("How much do you agree with the following statements about the Culinaria trip\\? - ","",cul_feedback$Question)
+cul_feedback %>% ggplot(aes(x = Response)) + geom_bar() + facet_wrap(~Question,ncol = 1)
+
+ggsave("cultrip_surveyres.png", width =10, height = 15)
+```
+
+# Student Assessments over time 
+```{r, echo=F}
+# 2022
+ref_2022 <- read_csv("globalclassroom code 2022 Winter/All_Reflections_Global_Classroom.csv") %>% filter(reflection != "chemistry") %>% mutate(Year = 2022) 
+ref_2022$Filename = gsub("_.+$","",ref_2022$Filename)
+ref_2022$Filename = gsub(" .+$","",ref_2022$Filename)
+ref_2022$Filename = gsub("-.+$","",ref_2022$Filename)
+ref_2022 = ref_2022 %>% rename("Name" = Filename)
+ref_2022 = ref_2022 %>% select(-c(Text))
+ref_2022$reflection = gsub("Youth and Union","Youth & Unions",ref_2022$reflection)
+ref_2022$reflection = gsub("Debates on Free Tuition and Universal Basic Income","Universal Basic Income & University Tuition",ref_2022$reflection)
+ref_2022 = ref_2022 %>% filter(reflection!="Presentation"&reflection!="Arbitration Role Play")
+
+# 2023
+LIWC_ib_2023 <- read_csv("data - winter 2023/LIWC-ib-2023.csv") %>%mutate(reflection = "Identifying Barriers")
+LIWC_t_2023 <- read_csv("data - winter 2023/LIWC tuition 2023.csv") %>%mutate(reflection = "Universal Basic Income & University Tuition")
+LIWC_yu_2023 <- read_csv("data - winter 2023/LIWC yu 2023.csv") %>%mutate(reflection = "Youth & Unions")
+LIWC_wm_2023 <- read_csv("data - winter 2023/LIWC wm 2023.csv") %>%mutate(reflection = "Women's March")
+LIWC_final_2023 <- read_csv("data - winter 2023/LIWC-22 final2023.csv") %>%mutate(reflection = "Final Exam")
+
+ref_2023 = rbind(LIWC_ib_2023, LIWC_t_2023, LIWC_wm_2023, LIWC_yu_2023, LIWC_final_2023)
+
+ref_2023$Filename = gsub(", ","",ref_2023$Filename)
+ref_2023$Filename = gsub(",","",ref_2023$Filename)
+ref_2023$Filename = gsub(".docx","",ref_2023$Filename)
+
+ref_2023 <- ref_2023 %>% rename("Name" = Filename) %>% select(-c(Segment, Emoji))%>% mutate(Year = 2023) 
+
+# 2024
+ref_2024 <- read_csv("data - winter 2024/LIWC_res_2024.csv") %>% 
+  select(-c(Segment, Emoji))%>% filter(reflection != "Arbitration Role Play")%>% mutate(Year = 2024) 
+
+full_liwc_data = rbind(ref_2022, ref_2023, ref_2024)
+```
+
+##PCA Analysis
+```{r}
+# remove unnecessesary linguistic variables (word count, number of adjectives, number of big words,etc)
+pca_analysis<- function(dt){
+PCAdata <- dt
+PCAdata2<- PCAdata[,apply(PCAdata, 2, function(x) all(x > 0, na.rm=T))]
+                   
+PCA_scaled <- PCAdata2 %>% mutate_all(~scale(.) %>% as.vector) 
+
+# STANDARDIZE DATA
+# to transform all variables to the same scale
+# Average scores below the mean of 0 indicated that participants used fewer words and phrases from the word categories compared with the mean
+
+###### Preliminary Diagnostic Checks ######
+# Bartlett's test for  correlation matrix
+cortest.mat(PCA_scaled) 
+# Determining number of factors to extract
+library(nFactors)
+library(factoextra)
+# common rule - atleast 70% of total variation explained with eigenvalues of at least 1
+pca=prcomp(PCA_scaled)
+
+
+# scree - determined 4 key dimensions
+print(fviz_screeplot(pca, type="lines", addlabels=TRUE, ylim = c(0, 80), main=" PCA Scree Plot" ))
+library(ggfortify)
+
+# loadings
+
+
+res.pc <-principal(PCA_scaled, nfactors=4, rotate="varimax")
+# cronbach alpha 
+
+library(FactoMineR)
+res2 <- PCA(PCA_scaled, graph = T, scale.unit = T)
+
+loadings <-res2$var$cor # table with factor loadings
+
+
+library(kableExtra)
+vars = as.data.frame(res.pc$loadings)
+vars = data.frame(matrix(as.numeric(res.pc$loadings), attributes(res.pc$loadings)$dim, dimnames=attributes(res.pc$loadings)$dimnames))
+vars %>% kable(caption = "Correlations between Principal Components and the original scores.", digits = 2)
+loadings <- as.matrix.data.frame(res.pc$loadings)
+colnames(loadings) <- c("PC1", "PC2", "PC3", "PC4")
+rownames(loadings) <- colnames(PCA_scaled)
+loadings
+}
+```
+### 2022
+```{r}
+full2022 = full_liwc_data %>% filter(Year == 2022) %>% dplyr::select(-c(Name, WC, prep, adverb, adj, det, Dic, WPS, BigWords, reflection,Year,auxverb,verb,Linguistic))
+pca_analysis(full2022)
+```
+### PCA Scree Plot Interpretation
+
+- **Variance Explained**:
+  The first two components explain a significant portion of the variance. PC1 accounts for 27.7% and PC2 for 21.8%.
+- 4 components account for 77.8% of variation in data
+
+- **Elbow Point**:
+  The scree plot's "elbow" point seems to be around the 4th -5th components, indicating that most of the significant variance is within these components. 
+- 4 dimensions chosen for dimensionality reduction
+
+The factor loadings represent the correlations between the original variables and each principal component.
+
+- **PC1**:
+  - This component has strong positive loadings for "Cognition" and "cogproc," suggesting a focus on cognitive-related factors.
+  - The negative loading for "Analytic" suggests an inverse relationship with the other positively correlated variables.
+
+- **PC2**:
+  - High positive loadings for "Clout," "Social," and "socrefs" indicate this component likely represents social or authority-related aspects.
+  - The correlation between these variables suggests that this component might reflect interpersonal dynamics or social interaction.
+
+- **PC3**:
+  - High positive loadings for "Lifestyle" and "work," suggesting that this component is strongly influenced by lifestyle or work-related patterns.
+  - This component captures a specific aspect of the data, focusing on everyday life and work.
+
+- **PC4**:
+  - Strong positive loadings for "Perception" and "space" suggest this component might represent perceptual or spatial factors.
+  - The negative loadings for Tone suggest potential inverse relationships with this component.
+
+### 2023
+```{r}
+full2023 = full_liwc_data %>% filter(Year == 2023) %>% dplyr::select(-c(Name, WC, prep, adverb, adj, det, pronoun, `function`, AllPunc, article, Dic, WPS, BigWords, reflection,Year,auxverb,verb,Linguistic,Period))
+pca_analysis(full2023)
+
+
+```
+### PCA Scree Plot Interpretation
+
+- The first two components explain a significant portion of the variance in the dataset. PC1 accounts for approximately 29.6%, while PC2 accounts for about 19.2%. The cumulative variance explained by the first four components is about 65.4%.
+Elbow Point:
+The "elbow" in the plot appears around the 4th-5th components, indicating that most significant variance is within these components.
+
+- 4 components account for 73.5% of variation
+Factor Loadings Interpretation
+
+PC1:
+The strong positive loadings for "Clout", "Social", "Drives", and "socrefs" indicate that this component represents social-related factors, such as authority and interpersonal interaction.
+PC2:
+The high positive loadings for "Cognition," and "cogproc" suggest that this component focuses on analytical and cognitive-related factors.
+The negative loading for "Analytic" indicates an inverse relationship between this variable and other positively loaded variables.
+PC3:
+High positive loadings for "Authentic" and "Perception", "Space", and negative "Affect" suggest that this component might represent authenticity and perceptual and positive tone aspects.
+PC4:
+Strong positive loadings for "Lifestyle" and "work" indicate this component represents lifestyle or work-related factors.
+The negative loading for "Analytic" suggests an inverse relationship between this variable and the other positively loaded variables.
+
+### 2024
+```{r}
+full2024 = full_liwc_data %>% filter(Year == 2024) %>% drop_na() %>% dplyr::select(-c(Name, WC, prep, adverb, adj, det, Dic, WPS, BigWords, pronoun, `function`, number, reflection,Year,auxverb,verb,Linguistic, Comma, AllPunc, ppron))
+pca_analysis(full2024)
+```
+
+### PCA Scree Plot Interpretation
+- PC1 is extremely dominant, explaining 43.2% of the variance in the data.
+- PC2 explains 19.7%, still a substantial amount but less than half of PC1's contribution.
+PC3 accounts for 14.2%, 
+- total variation explained: 77%
+- seems that the variance explained by successive components drops significantly after PC1 and begins to level off after PC4, 
+elbow seen after PC3
+
+
+PC1:
+"Lifestyle" and "work" have very high loadings on this component, suggesting that PC1 may be capturing aspects related to personal and professional life aspects of the data set.
+
+PC2:
+"Clout," "Drives" load strongly here, suggesting PC2 may represent aspects of leadership, and perhaps professional drive.
+
+PC3:
+"Tone" and "Affect" show high loadings, implying PC3 may be capturing emotional expression or sentiment.
+
+PC4:
+"Analytic" has a very high positive loading on this component, while "Authentic" has a high negative loading
+
+
+### Plots based on PCA dimensions
+```{r long format data, include=FALSE}
+firstup <- function(x) {
+  substr(x, 1, 1) <- toupper(substr(x, 1, 1))
+  x
+}
+data_year_longer <- function(dat, year){
+  dat %>% filter(Year == year) %>% pivot_longer(!c(Name, reflection), names_to = "Variable", values_to = "Score")
+}
+
+full2022long <- data_year_longer(full_liwc_data, 2022) 
+full2023long <- data_year_longer(full_liwc_data, 2023)
+full2024long <- data_year_longer(full_liwc_data, 2024)
+full2022long$Variable <- firstup(full2022long$Variable)
+full2023long$Variable <- firstup(full2023long$Variable)
+full2024long$Variable <- firstup(full2024long$Variable)
+
+# for graphing dimensions by assessment
+assessments_by_dimension <- function(dat){
+dat %>% ggplot(aes(x=reflection,y=Score, color = Dimension)) + stat_summary(aes(group = Dimension), fun=mean, geom = "line") +  stat_summary(aes(group = Dimension), fun=mean, geom = "point") + 
+labs(x="Assessment",y="Mean Dimension Score") + theme(legend.position = "right", axis.text.x = element_text(angle = 30,hjust = 1))}
+
+# bar plot of scores by dimension
+scores_by_dimension <- function(dat, pc1, pc2, pc3, pc4, xmin11, xmin12, xmax11, xmax12, xmin21, xmin22, xmax21, xmax22){
+  dat %>% group_by(Variable) %>% mutate(mean = mean(Score))  %>% 
+ggplot(aes(x = Variable,  y = mean))  + geom_bar(position = "dodge", stat="identity") + labs(title = "", caption = "Percentage of words in student responses that fall into LIWC category.", x = "Dimension",  y ="Mean score")  + theme(legend.position = c(0.8, 0.8)) + ylim(0,105) +
+  
+  geom_signif(y_position = c(100,100), xmin = c(xmin11,xmin12), 
+              xmax = c(xmax11, xmax12), annotation = c(pc1,pc2),
+              tip_length = .05)  +
+  
+  geom_signif(y_position = c(60,60), xmin = c(xmin21,xmin22), 
+              xmax = c(xmax21,xmax22), annotation = c(pc3,pc4),
+              tip_length = .05)}
+
+assessments_by_dimension <- function(dat){
+dat %>% ggplot(aes(x=reflection,y=Score, color = Dimension)) + stat_summary(aes(group = Dimension), fun=mean, geom = "line") +  stat_summary(aes(group = Dimension), fun=mean, geom = "point") + 
+labs(x="Assessment",y="Mean Dimension Score") + theme(legend.position = "right", axis.text.x = element_text(angle = 30,hjust = 1))}
+
+# bar plot of scores by dimension
+scores_by_dimension_by_group <- function(dat, pc1, pc2, pc3, pc4, xmin11, xmin12, xmax11, xmax12, xmin21, xmin22, xmax21, xmax22){
+  dat %>% group_by(Variable) %>% mutate(mean = mean(Score))  %>% 
+ggplot(aes(x = Variable,  y = mean))  + geom_bar(position = "dodge", stat="identity") + labs(title = "", caption = "Percentage of words in student responses that fall into LIWC category.", x = "Dimension",  y ="Mean score")  + theme(legend.position = c(0.8, 0.8)) + ylim(0,105) +
+  
+  geom_signif(y_position = c(100,100), xmin = c(xmin11,xmin12), 
+              xmax = c(xmax11, xmax12), annotation = c(pc1,pc2),
+              tip_length = .05)  +
+  
+  geom_signif(y_position = c(60,60), xmin = c(xmin21,xmin22), 
+              xmax = c(xmax21,xmax22), annotation = c(pc3,pc4),
+              tip_length = .05)}
+
+
+
+```
+2022 
+```{r}
+library(ggsignif)
+
+full2022long <- full2022long %>% mutate(Dimension = case_when(Variable == "Analytic"~"Thinking",
+Variable == "Cognition" ~"Thinking", Variable == "Clout" ~ "Social Leadership",
+Variable == "Social"  ~ "Social Leadership", Variable == "Lifestyle" ~  "Work and Lifestyle", Variable == "Work" ~  "Work and Lifestyle", Variable == "Perception"~"Experiential",Variable == "Space"~"Experiential", Variable =="Tone"~"Experiential")) %>% filter(!is.na(Dimension))
+
+
+full2022long$Dimension <- factor(full2022long$Dimension, levels = c("Thinking", "Social Leadership","Work and Lifestyle", "Experiential"))
+
+full2022long$Variable <- factor(full2022long$Variable, levels = c("Analytic","Cognition", "Clout", "Social", "Lifestyle", "Work", "Perception", "Space", "Tone"))
+full2022long$reflection = gsub("Exam reflections","Final Exam",full2022long$reflection)
+
+full2022long$reflection <- factor(full2022long$reflection, levels = c("Identifying Barriers", "Youth & Unions", "Women's March","Universal Basic Income & University Tuition", "Final Exam"))
+
+
+assessments_by_dimension(full2022long)
+scores_by_dimension(full2022long, "Thinking", "Social Leadership", "Work and Lifestyle", "Experiential", 0.5, 2.5, 2, 4.3, 4.6, 6.5, 6.4, 9.5)
+```
+
+2023
+```{r}
+
+full2023long <- full2023long %>% mutate(Dimension = case_when(Variable == "Analytic"~"Thinking", Variable == "Cognition" ~"Thinking", 
+
+Variable == "Clout" ~ "Social Leadership",
+Variable == "Social"  ~ "Social Leadership", Variable == "Drives"  ~ "Social Leadership",
+
+Variable == "Lifestyle" ~  "Work and Lifestyle", Variable == "Work" ~  "Work and Lifestyle", 
+
+Variable == "Perception"~"Experiential",Variable == "Space"~"Experiential", Variable =="Authentic"~"Experiential")) %>% filter(!is.na(Dimension))
+
+
+full2023long$Dimension <- factor(full2023long$Dimension, levels = c("Thinking", "Social Leadership", "Experiential", "Work and Lifestyle"))
+
+full2023long$Variable <- factor(full2023long$Variable, levels = c("Analytic","Cognition", "Clout", "Social","Drives", "Lifestyle", "Work", "Perception", "Space", "Authentic"))
+
+full2023long$reflection <- factor(full2023long$reflection, levels = c("Identifying Barriers", "Youth & Unions", "Women's March","Universal Basic Income & University Tuition", "Final Exam"))
+
+
+assessments_by_dimension(full2023long)
+scores_by_dimension(full2023long, "Thinking", "Social Leadership", "Work and Lifestyle", "Experiential", 0.5, 2.5, 2, 5.5, 5.7, 7.6, 7.4, 10.5)
+
+
+```
+
+2024
+```{r}
+
+full2024long <- full2024long %>% mutate(Dimension = case_when(Variable == "Analytic"~"Thinking (Expressive vs. Analytical Tradeoff)", Variable == "Authentic" ~"Thinking (Expressive vs. Analytical Tradeoff)", 
+
+Variable == "Clout" ~ "Social Leadership",
+Variable == "Drives"  ~ "Social Leadership",
+
+Variable == "Lifestyle" ~  "Work and Lifestyle", Variable == "Work" ~  "Work and Lifestyle", 
+
+Variable == "Tone"~"Affective Tone",Variable == "Affect"~"Affective Tone")) %>% filter(!is.na(Dimension))
+
+
+full2024long$Dimension <- factor(full2024long$Dimension, levels = c("Thinking (Expressive vs. Analytical Tradeoff)", "Social Leadership", "Affective Tone", "Work and Lifestyle"))
+
+full2024long$Variable <- factor(full2024long$Variable, levels = c("Analytic","Authentic", "Clout","Drives", "Lifestyle", "Work", "Tone", "Affect"))
+
+full2024long$reflection <- factor(full2024long$reflection, levels = c("Identifying Barriers", "Youth & Unions", "Women's March","Universal Basic Income and University Tuition","Employer Approaches to Labor Relations", "Final Exam"))
+
+assessments_by_dimension(full2024long)
+
+full2024long %>% filter(!is.na(Score)) %>% group_by(Variable) %>% mutate(mean = mean(Score))  %>% 
+ggplot(aes(x = Variable,  y = mean))  + geom_bar(position = "dodge", stat="identity") + labs(title = "", caption = "Percentage of words in student responses that fall into LIWC category.", x = "Dimension",  y ="Mean score")  + theme(legend.position = c(0.8, 0.8)) + ylim(0,105) +
+  
+  geom_signif(y_position = c(105,100), xmin = c(0.5,2.6), 
+              xmax = c(2.4, 4.5), annotation = c("Thinking", "Social Leadership"),
+              tip_length = .05)  +
+  
+  geom_signif(y_position = c(40,70), xmin = c(4.5,6.5), 
+              xmax = c(6.4,8.5), annotation = c("Work and Lifestyle", "Affective Tone" ),
+              tip_length = .05)
+ 
+```
+
+Affective: This aspect highlights the emotional component, suggesting that the dimension involves emotional responses or feelings.
+Tone: This aspect points to the overall mood, quality, or attitude present in communication or experiential settings.
+
+When combined, "Affective Tone" represents the emotional undercurrents or ambiance in a given context, reflecting how emotionality influences the way information is presented or received. It can be used to describe a dimension that measures the general emotional mood or climate of an interaction, communication, or environment.
+
+
+# Correlation Analyses 
+## Extracting leadership scores
+### 2022
+```{r}
+# lead2022 <- leadership_2022 %>% select(c(1, 6, 9:10, 16,17:39, 50:72,83:105,116:138,149:171,182))
+# 
+# lead2022$rater=lead2022$Name
+# 
+# lead2022 <- lead2022 %>% 
+# unite("ratee1", Q23_2, Q23_1,sep="") %>% mutate(ratee1= tolower(ratee1)) %>% 
+# unite("ratee2", Q26_2, Q26_1,sep="") %>% mutate(ratee2= tolower(ratee2)) %>% 
+# unite("ratee3", Q30_2, Q30_1,sep="") %>% mutate(ratee3 = tolower(ratee3)) %>% 
+# unite("ratee4", Q33_2, Q33_1,sep="") %>% mutate(ratee4 = tolower(ratee4)) %>% 
+# unite("ratee5", Q36_2, Q36_1,sep="") %>% mutate(ratee5 = tolower(ratee5))
+# 
+# write_csv(lead2022,"leadership2022.csv")
+
+lead2022 <- leadership2022 <- read_csv("leadership2022.csv")
+lead2022$Q24_1_16 = car::recode(lead2022$Q24_1_16, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead2022$Q24_2_16 = car::recode(lead2022$Q24_2_16, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead2022$Q24_3_16 = car::recode(lead2022$Q24_3_16, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead2022$Q24_4_16 = car::recode(lead2022$Q24_4_16, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead2022$Q24_5_16 = car::recode(lead2022$Q24_5_16, '1=5; 2=4; 3=3; 4=2; 5=1')
+
+lead2022$Q24_1_19 = car::recode(lead2022$Q24_1_19, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead2022$Q24_2_19 = car::recode(lead2022$Q24_2_19, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead2022$Q24_3_19 = car::recode(lead2022$Q24_3_19, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead2022$Q24_4_19 = car::recode(lead2022$Q24_4_19, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead2022$Q24_5_19 = car::recode(lead2022$Q24_5_19, '1=5; 2=4; 3=3; 4=2; 5=1')
+
+lead2022$Q24_1_20 = car::recode(lead2022$Q24_1_20, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead2022$Q24_2_20 = car::recode(lead2022$Q24_2_20, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead2022$Q24_3_20 = car::recode(lead2022$Q24_3_20, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead2022$Q24_4_20 = car::recode(lead2022$Q24_4_20, '1=5; 2=4; 3=3; 4=2; 5=1')
+lead2022$Q24_5_20 = car::recode(lead2022$Q24_5_20, '1=5; 2=4; 3=3; 4=2; 5=1')
+
+pattern_is <- "Q24_[1-5]_[1-10]"
+is_columns <- lead2022 %>% select(matches(pattern_is))
+lead2022$initiating_structure <- rowMeans(is_columns, na.rm=T)
+
+
+
+pattern_cons <-"Q24_[1-5]_(1[1-9]|20)"
+cons_columns <- lead2022 %>% select(matches(pattern_cons))
+lead2022$consideration<- rowMeans(cons_columns, na.rm=T)
+lead2022 <- lead2022  %>% mutate(Ethnicity = case_when(Ethnicity == 1 ~ "Hispanic/Mexican American/Latino/Chicano", 
+             Ethnicity ==  2 ~ "White/Caucasian/European-American", 
+              Ethnicity ==  3 ~ "Black (African-American, West Indian, Afro-Caribbean)",
+              Ethnicity ==  4 ~ "Middle Eastern (Arab, Iranian, Lebanese)", 
+              Ethnicity == 5 ~ " South Asian (Indian, Malay, Pakistani)", 
+              Ethnicity == 6 ~ "East Asian (Chinese, Korean, Japanese)",
+              Ethnicity == 7 ~ "Pacific-Islander (Filipino, Hawaiian)",
+              Ethnicity ==  8 ~ "Indigenous")) %>% mutate(Gender = case_when(Gender == 1 ~ "Male", Gender == 2 ~ "Female")) %>% distinct(Name, .keep_all = T)
+
+combined_2022 <- full_liwc_data %>% filter(Year == 2022) %>% right_join(lead2022) %>% rename("Work" = work, "Space" = space) %>% select(Name, Ethnicity, Gender, initiating_structure, consideration,Analytic,Cognition, Clout, Social, Lifestyle, Work, Perception, Space, Tone) 
+```
+
+```{r}
+
+# compute correlation matrix
+vals2022 <-combined_2022 %>% select(-c(Name,Ethnicity,Gender)) %>% rename("Task Leadership"=initiating_structure, "Interpersonal Leadership" = consideration)
+# Desired order of columns
+desired_order <- c("Task Leadership", "Interpersonal Leadership" ,"Analytic",
+                   "Cognition", "Clout","Social", "Work" , "Lifestyle", "Perception", 
+                   "Space" , "Tone"  )
+
+# Reorder columns
+vals2022 <- vals2022 %>%
+  select(all_of(desired_order))
+
+correlation_matrix<- function(dat){
+corr <-cor(dat, use = "complete.obs") 
+library(corrplot)
+testRes=cor.mtest(vals2022,conf.level=0.95)
+p.df = as.data.frame(ggcorrplot::cor_pmat(vals2022))
+
+# p.mat <- cor_mat(allvals)
+library(ggcorrplot)
+
+# Function to get asteriks
+labs.function = function(x){
+  case_when(x > 0.05 ~ "",
+            x <= 0.05 & x >= 0.01 ~ "*",
+            x < 0.01 & x >= 0.001 ~ "**",
+            x < 0.001 ~ "***")
+}
+# Get asteriks matrix based on p-values
+p.labs = p.df  %>%                      
+  mutate_all(labs.function)
+cor.plot = ggcorrplot(corr, hc.order = F,  type = "lower",
+                      lab = TRUE,colors = c("darkgreen","white","orange"),ggtheme = ggplot2::theme_classic)
+# Reshaping asteriks matrix to match ggcorrplot data output
+p.labs$Var1 = as.factor(rownames(p.labs))
+library(data.table)
+p.labs = melt(p.labs, id.vars = "Var1", variable.name = "Var2", value.name = "lab")
+
+p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var1, p.labs$Var2), 
+                                  paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
+                      "No", "Yes")
+
+p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
+
+
+# Subsetting asteriks matrix to only those rows within ggcorrplot data
+p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var1, p.labs$Var2), 
+                                  paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
+                      "No", "Yes")
+
+p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
+
+# Add asteriks to ggcorrplot
+cor.plot.labs = cor.plot + 
+  geom_text(aes(x = p.labs$Var1, 
+                y = p.labs$Var2), 
+            label = p.labs$lab, 
+            nudge_y = 0.25, 
+            size = 5)
+
+cor.plot.labs
+}
+print(correlation_matrix(vals2022))
+ggsave("corrplot2022.png",width=12, height = 12)
+
+```
+
+### 2023
+```{r}
+
+lead2023 = read_csv("byRater2023.csv")
+
+data_setup<-function(dat){
+columns_needed = c("Name", "Gender", "Ethnicity")
+dat <- dat %>% select(columns_needed, matches("Q24"))
+
+substring_to_match <- c("_16", "_19", "_20")
+pattern <- paste(substring_to_match, collapse="|")
+
+columns_to_recode = names(dat) %>% .[str_detect(.,pattern)]
+
+dat <- dat %>% mutate_at(vars(one_of(columns_to_recode)), ~car::recode(., '1=5; 2=4; 3=3; 4=2; 5=1'))
+
+pattern_is <- "^Q24_1_([1-9]|10)(_.*)?$"
+is_columns <- dat %>%
+  select(matches(pattern_is))
+dat$initiating_structure <- rowMeans(is_columns, na.rm=T)
+
+
+
+pattern_cons <-"Q24_[1-5]_(1[1-9]|20)(_.*)?$"
+cons_columns <- dat %>% select(matches(pattern_cons))
+dat$consideration<- rowMeans(cons_columns, na.rm=T)
+dat <- dat%>% distinct(Name, .keep_all = T)
+}
+
+lead2023 <- data_setup(lead2023)
+
+combined_2023 <- full_liwc_data %>% filter(Year == 2023) %>% right_join(lead2023) %>% rename("Work" = work, "Space" = space) %>% select(Name, Ethnicity, Gender, initiating_structure, consideration,Analytic,Cognition, Clout, Social,Drives, Lifestyle, Work, Perception, Space, Authentic) 
+```
+
+```{r}
+
+# compute correlation matrix
+vals2023 <-combined_2023 %>% select(-c(Name,Ethnicity,Gender)) %>% rename("Task Leadership"=initiating_structure, "Interpersonal Leadership" = consideration)
+# Desired order of columns
+desired_order <- c("Task Leadership", "Interpersonal Leadership" ,"Analytic","Cognition", "Clout", "Social","Drives", "Lifestyle", "Work", "Perception", "Space", "Authentic"  )
+
+# Reorder columns
+vals2023 <- vals2023 %>%
+  select(all_of(desired_order))
+
+correlation_matrix<- function(dat){
+corr <-cor(dat, use = "complete.obs") 
+library(corrplot)
+testRes=cor.mtest(dat,conf.level=0.95)
+p.df = as.data.frame(ggcorrplot::cor_pmat(dat))
+
+# p.mat <- cor_mat(allvals)
+library(ggcorrplot)
+
+# Function to get asteriks
+labs.function = function(x){
+  case_when(x > 0.05 ~ "",
+            x <= 0.05 & x >= 0.01 ~ "*",
+            x < 0.01 & x >= 0.001 ~ "**",
+            x < 0.001 ~ "***")
+}
+# Get asteriks matrix based on p-values
+p.labs = p.df  %>%                      
+  mutate_all(labs.function)
+cor.plot = ggcorrplot(corr, hc.order = F,ggtheme = ggplot2::theme_classic, type = "lower",
+                      lab = TRUE,colors = c("darkgreen","white","orange"))
+# Reshaping asteriks matrix to match ggcorrplot data output
+p.labs$Var1 = as.factor(rownames(p.labs))
+library(data.table)
+p.labs = melt(p.labs, id.vars = "Var1", variable.name = "Var2", value.name = "lab")
+
+p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var1, p.labs$Var2), 
+                                  paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
+                      "No", "Yes")
+
+p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
+
+
+# Subsetting asteriks matrix to only those rows within ggcorrplot data
+p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var1, p.labs$Var2), 
+                                  paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
+                      "No", "Yes")
+
+p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
+
+# Add asteriks to ggcorrplot
+cor.plot.labs = cor.plot + 
+  geom_text(aes(x = p.labs$Var1, 
+                y = p.labs$Var2), 
+            label = p.labs$lab, 
+            nudge_y = 0.25, 
+            size = 5)
+
+cor.plot.labs
+}
+print(correlation_matrix(vals2023))
+ggsave("corrplot2023.png",width=12, height = 12)
+
+```
+
+### 2024
+```{r}
+lead2024 = read_csv("byRater2024.csv")
+
+data_setup<-function(dat){
+columns_needed = c("Name", "Gender", "Ethnicity")
+dat <- dat %>% select(columns_needed, matches("Q24"))
+
+substring_to_match <- c("_16", "_19", "_20")
+pattern <- paste(substring_to_match, collapse="|")
+
+columns_to_recode = names(dat) %>% .[str_detect(.,pattern)]
+
+dat <- dat %>% mutate_at(vars(one_of(columns_to_recode)), ~car::recode(., '1=5; 2=4; 3=3; 4=2; 5=1'))
+
+pattern_is <- "^Q24_1_([1-9]|10)(_.*)?$"
+is_columns <- dat %>%
+  select(matches(pattern_is))
+dat$initiating_structure <- rowMeans(is_columns, na.rm=T)
+
+
+
+pattern_cons <-"Q24_[1-5]_(1[1-9]|20)(_.*)?$"
+cons_columns <- dat %>% select(matches(pattern_cons))
+dat$consideration<- rowMeans(cons_columns, na.rm=T)
+dat <- dat%>% distinct(Name, .keep_all = T)
+}
+
+lead2024 <- data_setup(lead2024)
+
+combined_2024 <- full_liwc_data %>% filter(Year == 2024) %>% right_join(lead2024) %>% rename("Work" = work, "Space" = space) %>% select(Name, Ethnicity, Gender, initiating_structure, consideration,Analytic,Authentic, Clout,Drives, Lifestyle, Work, Tone, Affect) 
+```
+
+```{r}
+
+# compute correlation matrix
+vals2024 <-combined_2024 %>% select(-c(Name,Ethnicity,Gender)) %>% rename("Task Leadership"=initiating_structure, "Interpersonal Leadership" = consideration)
+# Desired order of columns
+desired_order <- c("Task Leadership", "Interpersonal Leadership" ,"Analytic","Authentic", "Clout","Drives", "Lifestyle", "Work", "Tone", "Affect" )
+
+# Reorder columns
+vals2024 <- vals2024 %>%
+  select(all_of(desired_order))
+
+correlation_matrix<- function(dat){
+corr <-cor(dat, use = "complete.obs") 
+library(corrplot)
+testRes=cor.mtest(dat,conf.level=0.95)
+p.df = as.data.frame(ggcorrplot::cor_pmat(dat))
+
+# p.mat <- cor_mat(allvals)
+library(ggcorrplot)
+
+# Function to get asteriks
+labs.function = function(x){
+  case_when(x > 0.05 ~ "",
+            x <= 0.05 & x >= 0.01 ~ "*",
+            x < 0.01 & x >= 0.001 ~ "**",
+            x < 0.001 ~ "***")
+}
+# Get asteriks matrix based on p-values
+p.labs = p.df  %>%                      
+  mutate_all(labs.function)
+cor.plot = ggcorrplot(corr, hc.order = F, ggtheme = ggplot2::theme_classic,type = "lower",
+                      lab = TRUE,colors = c("darkgreen","white","orange"))
+# Reshaping asteriks matrix to match ggcorrplot data output
+p.labs$Var1 = as.factor(rownames(p.labs))
+library(data.table)
+p.labs = melt(p.labs, id.vars = "Var1", variable.name = "Var2", value.name = "lab")
+
+p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var1, p.labs$Var2), 
+                                  paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
+                      "No", "Yes")
+
+p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
+
+
+# Subsetting asteriks matrix to only those rows within ggcorrplot data
+p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var1, p.labs$Var2), 
+                                  paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
+                      "No", "Yes")
+
+p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
+
+# Add asteriks to ggcorrplot
+cor.plot.labs = cor.plot + 
+  geom_text(aes(x = p.labs$Var1, 
+                y = p.labs$Var2), 
+            label = p.labs$lab, 
+            nudge_y = 0.25, 
+            size = 5)
+
+cor.plot.labs
+}
+print(correlation_matrix(vals2024))
+ggsave("corrplot2024.png",width=12, height = 12)
+
+```
+
+
+# Differences in Groups
+```{r}
+fulllong2022 <- data_year_longer(full_liwc_data, 2022) %>% full_join(class_2022) %>% mutate(Dimension = case_when(Variable == "Analytic"~"Thinking",
+Variable == "Cognition" ~"Thinking", Variable == "Clout" ~ "Social Leadership",
+Variable == "Social"  ~ "Social Leadership", Variable == "Lifestyle" ~  "Work and Lifestyle", Variable == "Work" ~  "Work and Lifestyle", Variable == "Perception"~"Experiential",Variable == "Space"~"Experiential", Variable =="Tone"~"Experiential")) %>% filter(!is.na(Dimension)) %>% filter(!is.na(Gender))
+
+fulllong2023 <- data_year_longer(full_liwc_data,2023) %>% left_join(class_2023,by="Name") %>% mutate(Dimension = case_when(Variable == "Analytic"~"Thinking", Variable == "Cognition" ~"Thinking", 
+
+Variable == "Clout" ~ "Social Leadership",
+Variable == "Social"  ~ "Social Leadership", Variable == "Drives"  ~ "Social Leadership",
+
+Variable == "Lifestyle" ~  "Work and Lifestyle", Variable == "Work" ~  "Work and Lifestyle", 
+
+Variable == "Perception"~"Experiential",Variable == "Space"~"Experiential", Variable =="Authentic"~"Experiential")) %>%  filter(!is.na(Dimension))
+
+
+fulllong2024 <-data_year_longer(full_liwc_data,2024)  %>% left_join(class_2024,by="Name") %>% mutate(Dimension = case_when(Variable == "Analytic"~"Thinking", Variable == "Authentic" ~"Thinking", 
+
+Variable == "Clout" ~ "Social Leadership",
+Variable == "Drives"  ~ "Social Leadership",
+
+Variable == "Lifestyle" ~  "Work and Lifestyle", Variable == "Work" ~  "Work and Lifestyle", 
+
+Variable == "Tone"~"Affective Tone",Variable == "Affect"~"Affective Tone")) %>% filter(!is.na(Dimension)) %>%mutate(reflection= factor(reflection, levels = c("Identifying Barriers", "Youth & Unions", "Women's March","Universal Basic Income and University Tuition","Employer Approaches to Labor Relations", "Final Exam"))) %>% filter(!is.na(Gender))
+library(sjstats)
+library(rstatix)
+assessments_by_dimension_by_Sex <- function(dat,dimension){
+dat  %>% filter(Dimension == "Thinking") %>% ggplot(aes(x=Gender,y=Score, fill=Gender)) + geom_boxplot() + facet_wrap(Dimension~reflection,nrow = 1)+
+labs(x="Assessment",y="Mean Dimension Score") + theme(legend.position = "right", axis.text.x = element_text(angle = 30,hjust = 1))}
+
+# Required libraries
+library(dplyr)
+library(broom)
+library(purrr)
+variables <- unique(fulllong2023$Variable)
+
+# Function to compute ANOVA and tidy the results
+compute_anova <- function(var) {
+  dt <- fulllong2024 %>% filter(Variable == var)
+  # Perform ANOVA and tidy the output
+  tidy_results <- aov(Score ~ reflection * Gender, data = dt) %>%
+    broom::tidy()
+  
+  # Add variable name to the results
+  tidy_results$Variable <- var
+  
+  return(tidy_results)
+}
+
+# Compute ANOVA for each variable and create a summary table
+anova_summary <- map_df(variables, compute_anova)
+
+# Display the summary table
+anova_summary %>% kable()
+
+assessments_by_dimension_by_Sex(fulllong2024)
+
+
+ggsave("dim_by_sex2024.png",width=14,height=14)
+  
+
+
+```
+
